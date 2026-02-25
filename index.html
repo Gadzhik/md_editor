@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown Editor V4 (AI Powered)</title>
+    <link rel="stylesheet" href="node_modules/highlight.js/styles/github-dark.css" id="hljs-theme">
+    <link rel="stylesheet" href="node_modules/katex/dist/katex.min.css">
+    <link rel="stylesheet" href="style.css">
+    <!-- Mermaid script import locally -->
+    <script type="module">
+        import mermaid from './node_modules/mermaid/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+        window.mermaidRenderer = mermaid;
+    </script>
+</head>
+
+<body class="theme-dark">
+    <!-- Layout Wrapper -->
+    <div class="app-wrapper">
+        <!-- Sidebar -->
+        <aside id="sidebar" class="sidebar">
+            <div class="sidebar-header">
+                <h3>Explorer</h3>
+                <button id="btn-open-folder" title="Open Folder">📂</button>
+            </div>
+            <div id="file-tree" class="file-tree"></div>
+        </aside>
+
+        <!-- Main Content Wrapper -->
+        <div class="main-content">
+            <!-- Tabs Bar -->
+            <div id="tabs-container" class="tabs-container">
+            </div>
+
+            <!-- Toolbar -->
+            <div id="toolbar" class="toolbar">
+                <div class="toolbar-left">
+                    <button id="btn-open" title="Open File (Ctrl+O)">📄 Open</button>
+                    <button id="btn-save" title="Save File (Ctrl+S)">💾 Save</button>
+                    <select id="recent-files" title="Recent Files">
+                        <option value="" disabled selected>Recent...</option>
+                    </select>
+                    <span class="status-indicator" id="save-status"></span>
+                    <span class="status-indicator" id="git-status"></span>
+                </div>
+                <div class="toolbar-right">
+                    <button id="btn-ai-chat" class="btn-featured" title="AI Chat">✨ AI Chat</button>
+                    <button id="btn-ai-settings" title="AI Settings">⚙️</button>
+                    <button id="btn-git-diff" title="View Git Diff" style="display:none;">⑂ Git Diff</button>
+                    <button id="btn-zen-mode" title="Focus Mode (F11)">🧘 Zen</button>
+                    <button id="btn-export-html" title="Export HTML">🌐 HTML</button>
+                    <button id="btn-export-pdf" title="Export PDF">📄 PDF</button>
+                    <button id="btn-theme" title="Toggle Theme">🌓 Theme</button>
+                    <div class="search-box">
+                        <input type="text" id="search-input" placeholder="Search (Ctrl+F)">
+                        <button id="btn-search">🔎</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats Bar -->
+            <div id="editor-header" class="editor-header">
+                <span class="file-name" id="file-name">No file opened</span>
+                <span class="stats" id="stats">0 words | 0 chars</span>
+            </div>
+
+            <!-- Split Editor/Preview Container -->
+            <div id="editor-container" class="container">
+                <textarea id="editor" placeholder="Start typing markdown here..."></textarea>
+                <div id="preview" class="markdown-body"></div>
+            </div>
+        </div>
+
+        <!-- AI Sidebar (V4) -->
+        <aside id="ai-sidebar" class="ai-sidebar">
+            <!-- Managed dynamically by aiChatService.js -->
+        </aside>
+
+        <!-- AI Settings Modal -->
+        <div id="ai-settings-modal" class="modal">
+            <div class="modal-content">
+                <h3>V4 AI Local Settings</h3>
+                <label>Provider:
+                    <select id="ai-provider">
+                        <option value="ollama">Ollama</option>
+                        <option value="lmstudio">LM Studio / Compatible</option>
+                    </select>
+                </label>
+                <label>Endpoint URL: <input type="text" id="ai-endpoint" value="http://localhost:11434"></label>
+                <label>Model:
+                    <select id="ai-model">
+                        <option value="">-- Load models --</option>
+                    </select>
+                </label>
+                <label>System Prompt: <textarea id="ai-system"
+                        rows="2">You are a helpful Markdown writing assistant.</textarea></label>
+                <div id="ai-status" style="font-size:12px; margin-top:5px; color:#ffaa00">Status: Disconnected</div>
+                <button id="btn-ai-refresh">Test Connection & Fetch Models</button>
+                <button id="btn-ai-save">Save & Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="renderer.js"></script>
+</body>
+
+</html>

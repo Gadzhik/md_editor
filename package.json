@@ -1,0 +1,34 @@
+{
+    "name": "md-editor",
+    "version": "3.0.0",
+    "description": "Productivity Markdown Editor V3",
+    "main": "main.js",
+    "scripts": {
+        "start": "electron .",
+        "pack": "electron-builder --dir",
+        "dist": "electron-builder"
+    },
+    "dependencies": {
+        "highlight.js": "^11.9.0",
+        "katex": "^0.16.9",
+        "markdown-it": "^14.1.0",
+        "markdown-it-katex": "^2.0.3",
+        "markdown-it-task-lists": "^2.1.1",
+        "mermaid": "^10.8.0",
+        "simple-git": "^3.22.0"
+    },
+    "devDependencies": {
+        "electron": "^29.1.0",
+        "electron-builder": "^24.13.3"
+    },
+    "build": {
+        "appId": "com.mdeditor.local",
+        "productName": "Markdown Editor V3",
+        "directories": {
+            "output": "dist"
+        },
+        "win": {
+            "target": "nsis"
+        }
+    }
+}

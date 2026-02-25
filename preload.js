@@ -1,4 +1,5 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, shell } = require('electron');
+const path = require('path');
 const MarkdownIt = require('markdown-it');
 const hljs = require('highlight.js');
 const markdownItTaskLists = require('markdown-it-task-lists');
@@ -112,5 +113,10 @@ contextBridge.exposeInMainWorld('api', {
     // Menu Listener
     onMenuTrigger: (callback) => {
         ipcRenderer.on('menu-action', (event, action) => callback(action));
-    }
+    },
+
+    // Utilities for Link Handling
+    joinPath: (...args) => path.join(...args),
+    dirname: (p) => path.dirname(p),
+    openExternal: (url) => shell.openExternal(url)
 });

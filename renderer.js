@@ -137,6 +137,13 @@ async function init() {
     // V4 AI Setup
     await initAI(config);
 
+    // Restore last project folder
+    if (config.lastDirectory) {
+        window.log('Restoring last directory:', config.lastDirectory);
+        await fileTreeService.openFolder(config.lastDirectory);
+        await gitService.init(config.lastDirectory, config);
+    }
+
     // --- Menu Actions Integration (V4 Fix) ---
     window.api.onMenuTrigger((action) => {
         window.log('Menu action triggered:', action);
@@ -383,6 +390,43 @@ document.getElementById('btn-export-pdf').addEventListener('click', async () => 
 document.getElementById('btn-export-html').addEventListener('click', async () => {
     window.log('Exporting HTML...');
     await exportService.exportHtml(previewElem);
+});
+
+// V4 Fix: Intercept link clicks in preview for nested navigation
+previewElem.addEventListener('click', async (e) => {
+    const link = e.target.closest('a');
+    if (!link) return;
+
+    e.preventDefault();
+    const href = link.getAttribute('href');
+    if (!href) return;
+
+    window.log('Preview link clicked:', href);
+
+    if (href.startsWith('http')) {
+        // External link
+        window.api.openExternal(href);
+    } else {
+        // Relative link
+        const currentPath = fileService.currentFilePath;
+        if (!currentPath) {
+            window.log('Cannot resolve relative path: no file is currently open');
+            return;
+        }
+
+        const currentDir = window.api.dirname(currentPath);
+        const targetPath = window.api.joinPath(currentDir, href);
+
+        window.log('Resolved relative link:', targetPath);
+
+        // Open the file in a new tab
+        const res = await fileService.openRecentFile(targetPath);
+        if (res) {
+            tabService.addTab(res.path, res.content, false, true);
+        } else {
+            window.log('Failed to open file at path:', targetPath);
+        }
+    }
 });
 
 document.getElementById('btn-search').addEventListener('click', () => { if (searchInput.value) window.find(searchInput.value); });

@@ -92,6 +92,19 @@ function createMainWindow() {
     });
     mainWindow.loadFile('index.html');
     buildAppMenu();
+
+    // V4 Fix: Prevent default navigation to avoid white screen on link clicks
+    mainWindow.webContents.on('will-navigate', (event, url) => {
+        if (url !== mainWindow.webContents.getURL()) {
+            event.preventDefault();
+            log('Prevented navigation to:', url);
+        }
+    });
+
+    mainWindow.webContents.on('will-frame-navigate', (event) => {
+        event.preventDefault();
+    });
+
     log('Main window created');
 }
 

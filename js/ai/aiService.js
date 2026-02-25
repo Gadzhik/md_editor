@@ -28,6 +28,7 @@ export class AiService {
                 }
             };
         } else {
+            // OpenAI / LM Studio / OpenRouter
             endpoint = `${config.endpoint}/v1/chat/completions`;
             payload = {
                 model: config.model,
@@ -84,6 +85,7 @@ export class AiService {
                 options: { temperature: config.temperature }
             };
         } else {
+            // OpenAI / LM Studio / OpenRouter
             endpoint = `${config.endpoint}/v1/chat/completions`;
             payload = {
                 model: config.model,

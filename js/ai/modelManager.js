@@ -35,6 +35,7 @@ export class ModelManager {
                 const res = await this.api.aiFetch({ endpoint: `${this.config.endpoint}/api/tags` });
                 return res.ok;
             } else {
+                // OpenAI compatible (OpenRouter, LM Studio, etc.)
                 const res = await this.api.aiFetch({ endpoint: `${this.config.endpoint}/v1/models` });
                 return res.ok;
             }
@@ -48,9 +49,10 @@ export class ModelManager {
                 if (!res.ok) return [];
                 return res.data.models.map(m => m.name);
             } else {
+                // OpenAI compatible
                 const res = await this.api.aiFetch({ endpoint: `${this.config.endpoint}/v1/models` });
                 if (!res.ok) return [];
-                return res.data.data.map(m => m.id);
+                return res.data.data.map(m => m.id || m.name);
             }
         } catch (e) { return []; }
     }

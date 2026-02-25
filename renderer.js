@@ -181,6 +181,23 @@ async function initAI(config) {
         document.getElementById('ai-endpoint').value = aiC.endpoint;
         document.getElementById('ai-system').value = aiC.systemPrompt;
         elModal.style.display = 'block';
+
+        // Update default endpoint when provider changes
+        const provSelect = document.getElementById('ai-provider');
+        const endpInput = document.getElementById('ai-endpoint');
+
+        // Remove old listener if exists to avoid double binds if we don't manage it elsewhere, 
+        // but here we can just bind once in initAI if we want. Let's bind it once.
+    });
+
+    document.getElementById('ai-provider').addEventListener('change', (e) => {
+        const prov = e.target.value;
+        const endpInput = document.getElementById('ai-endpoint');
+        if (prov === 'ollama') {
+            endpInput.value = 'http://localhost:11434';
+        } else if (prov === 'lmstudio') {
+            endpInput.value = 'http://localhost:1234';
+        }
     });
 
     document.getElementById('btn-ai-refresh').addEventListener('click', async () => {
@@ -229,7 +246,17 @@ async function initAI(config) {
         };
         window.log('Saving AI Config:', newConf);
         await modelManager.updateConfig(newConf, settingsService.update.bind(settingsService));
-        closeAiSettings();
+
+        // Visual feedback
+        const btn = document.getElementById('btn-ai-save');
+        const originalText = btn.textContent;
+        btn.textContent = "Saved!";
+        btn.style.background = "#00aa00";
+        setTimeout(() => {
+            btn.textContent = originalText;
+            btn.style.background = "";
+            closeAiSettings();
+        }, 800);
     });
 
     // V4 UX Fix: Close on click outside

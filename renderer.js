@@ -72,6 +72,9 @@ async function init() {
     refreshRecentFiles(config.recentFiles);
 
     if (config.zenMode) toggleZenMode(true);
+    if (config.editorHidden) toggleEditor(true);
+    if (config.sidebarHidden) toggleSidebar(true);
+    if (config.previewHidden) togglePreview(true);
 
     // Tab Service Init
     tabService = new TabService(tabsContainer, window.api, (tab) => {
@@ -154,6 +157,7 @@ function handleMenuAction(action) {
         case 'open-ai-chat': aiChatService.toggle(true); break;
         case 'open-ai-settings': document.getElementById('btn-ai-settings').click(); break;
         case 'git-diff': gitService.viewDiff(); break;
+        case 'toggle-editor': toggleEditor(); break;
         default: window.log('Unknown menu action:', action);
     }
 }
@@ -315,6 +319,9 @@ recentFilesSelect.addEventListener('change', async (e) => {
     recentFilesSelect.value = "";
 });
 
+document.getElementById('btn-toggle-sidebar').addEventListener('click', () => toggleSidebar());
+document.getElementById('btn-toggle-editor').addEventListener('click', () => toggleEditor());
+document.getElementById('btn-toggle-preview').addEventListener('click', () => togglePreview());
 document.getElementById('btn-zen-mode').addEventListener('click', () => toggleZenMode());
 function toggleZenMode(forceState = null) {
     const isZen = forceState !== null ? forceState : !document.body.classList.contains('zen-mode');
@@ -325,6 +332,48 @@ function toggleZenMode(forceState = null) {
 
     // Optimization: resize editor when UI changes
     if (editorElem) editorElem.focus();
+}
+
+function toggleEditor(forceState = null) {
+    const isHidden = forceState !== null ? forceState : !editorElem.classList.contains('hidden');
+    window.log('Editor Hidden:', isHidden);
+    if (isHidden) {
+        editorElem.classList.add('hidden');
+        document.getElementById('btn-toggle-editor').classList.add('btn-featured');
+    } else {
+        editorElem.classList.remove('hidden');
+        document.getElementById('btn-toggle-editor').classList.remove('btn-featured');
+        editorElem.focus();
+    }
+    settingsService.update({ editorHidden: isHidden });
+}
+
+function toggleSidebar(forceState = null) {
+    const sidebarElem = document.getElementById('sidebar');
+    const isHidden = forceState !== null ? forceState : !sidebarElem.classList.contains('hidden');
+    window.log('Sidebar Hidden:', isHidden);
+    if (isHidden) {
+        sidebarElem.classList.add('hidden');
+        document.getElementById('btn-toggle-sidebar').classList.add('btn-featured');
+    } else {
+        sidebarElem.classList.remove('hidden');
+        document.getElementById('btn-toggle-sidebar').classList.remove('btn-featured');
+    }
+    settingsService.update({ sidebarHidden: isHidden });
+}
+
+function togglePreview(forceState = null) {
+    const previewElem = document.getElementById('preview');
+    const isHidden = forceState !== null ? forceState : !previewElem.classList.contains('hidden');
+    window.log('Preview Hidden:', isHidden);
+    if (isHidden) {
+        previewElem.classList.add('hidden');
+        document.getElementById('btn-toggle-preview').classList.add('btn-featured');
+    } else {
+        previewElem.classList.remove('hidden');
+        document.getElementById('btn-toggle-preview').classList.remove('btn-featured');
+    }
+    settingsService.update({ previewHidden: isHidden });
 }
 
 document.getElementById('btn-export-pdf').addEventListener('click', async () => {
@@ -348,6 +397,9 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'F11') { e.preventDefault(); toggleZenMode(); }
     if (e.ctrlKey && e.key === 'b') { e.preventDefault(); editorService.wrapSelection('**', '**'); }
     if (e.ctrlKey && e.key === 'i') { e.preventDefault(); editorService.wrapSelection('*', '*'); }
+    if (e.ctrlKey && e.key === 'e') { e.preventDefault(); toggleEditor(); }
+    if (e.ctrlKey && e.shiftKey && e.key === 'B') { e.preventDefault(); toggleSidebar(); }
+    if (e.ctrlKey && e.shiftKey && e.key === 'P') { e.preventDefault(); togglePreview(); }
 
     // V4 UX Fix: Close modals on Escape
     if (e.key === 'Escape') {

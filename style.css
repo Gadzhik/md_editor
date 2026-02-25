@@ -59,7 +59,12 @@ body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    transition: width 0.3s ease;
+    transition: width 0.3s ease, border-right 0.3s ease;
+}
+
+.sidebar.hidden {
+    width: 0 !important;
+    border-right: none !important;
 }
 
 .sidebar-header {
@@ -256,6 +261,10 @@ button.btn-featured {
     transition: opacity 0.3s;
 }
 
+#editor.hidden {
+    display: none !important;
+}
+
 #preview {
     flex: 1;
     background-color: var(--preview-bg);
@@ -263,6 +272,10 @@ button.btn-featured {
     overflow-y: auto;
     line-height: 1.6;
     transition: opacity 0.3s;
+}
+
+#preview.hidden {
+    display: none !important;
 }
 
 /* Zen Focus Mode */

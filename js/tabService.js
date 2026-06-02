@@ -14,7 +14,13 @@ export class TabService {
                 if (t.path) {
                     const res = await this.api.readFile(t.path);
                     if (res) {
-                        this.addTab(res.path, res.content, false, false);
+                        const tab = this.addTab(res.path, res.content, false, false);
+                        // Restore last reading/editing position from previous session
+                        if (tab) {
+                            tab.cursorPos = t.cursorPos || 0;
+                            tab.scrollTop = t.scrollTop || 0;
+                            tab.previewScrollTop = t.previewScrollTop || 0;
+                        }
                     }
                 }
             }
@@ -23,7 +29,9 @@ export class TabService {
         if (this.tabs.length === 0) {
             this.addTab(null, '', false, true); // Untitled
         } else {
-            this.selectTab(this.tabs[0].id);
+            // Reopen the tab that was active when the app was last closed
+            const lastActive = config.activeTabPath && this.tabs.find(t => t.path === config.activeTabPath);
+            this.selectTab(lastActive ? lastActive.id : this.tabs[0].id);
         }
     }
 
@@ -50,6 +58,7 @@ export class TabService {
             path: filePath,
             content,
             scrollTop: 0,
+            previewScrollTop: 0,
             cursorPos: 0,
             isUnsaved
         };
@@ -68,10 +77,12 @@ export class TabService {
         // Save current active tab state before switching (if editor is available globally for cursor)
         const currentTab = this.getActiveTab();
         const editor = document.getElementById('editor');
+        const preview = document.getElementById('preview');
         if (currentTab && editor) {
             currentTab.cursorPos = editor.selectionStart;
             currentTab.scrollTop = editor.scrollTop;
-            window.log(`TabService: Saved state for ${currentTab.title} (Pos: ${currentTab.cursorPos}, Scroll: ${currentTab.scrollTop})`);
+            if (preview) currentTab.previewScrollTop = preview.scrollTop;
+            window.log(`TabService: Saved state for ${currentTab.title} (Pos: ${currentTab.cursorPos}, Scroll: ${currentTab.scrollTop}, Preview: ${currentTab.previewScrollTop || 0})`);
         }
 
         this.activeTabId = id;
@@ -123,7 +134,17 @@ export class TabService {
     }
 
     getSavableState() {
-        return this.tabs.map(t => ({ path: t.path }));
+        return this.tabs.map(t => ({
+            path: t.path,
+            cursorPos: t.cursorPos || 0,
+            scrollTop: t.scrollTop || 0,
+            previewScrollTop: t.previewScrollTop || 0
+        }));
+    }
+
+    getActiveTabPath() {
+        const active = this.getActiveTab();
+        return active ? active.path : null;
     }
 
     renderTabs() {

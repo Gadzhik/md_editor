@@ -3,6 +3,18 @@ const path = require('path');
 const fs = require('fs');
 const simpleGit = require('simple-git');
 
+// --- V4 Crash Diagnostics (SIGTRAP/int3 investigation) ---
+const { crashReporter } = require('electron');
+crashReporter.start({ uploadToServer: false });
+const crashLogPath = require('path').join(app.getPath('userData'), 'crash-diagnostics.log');
+function crashLog(...a) {
+    const line = '[' + new Date().toISOString() + '] ' + a.map(x => (x && typeof x === 'object') ? JSON.stringify(x) : String(x)).join(' ') + '\n';
+    try { fs.appendFileSync(crashLogPath, line); } catch (e) {}
+    console.error('[CRASH-DIAG]', ...a);
+}
+process.on('uncaughtException', e => crashLog('uncaughtException', (e && e.stack) || e));
+process.on('unhandledRejection', r => crashLog('unhandledRejection', (r && r.stack) || r));
+
 let mainWindow;
 const configPath = path.join(app.getPath('userData'), 'config.json');
 const promptsPath = path.join(app.getPath('userData'), 'prompts');
@@ -12,12 +24,15 @@ const defaultConfig = {
     autoSave: true,
     autoSaveDelay: 7000,
     autoSaveBackups: true,
+    autoSaveBackupLimit: 3, // keep at most N .backup-* per file; older ones pruned
     zenMode: false,
     gitAutoCommit: true,
     gitCommitInterval: 60000,
     debugMode: true, // V4 debug mode enabled by default
+    fontSize: 14, // V4: editor/preview zoom level (px)
     recentFiles: [],
     openedTabs: [],
+    activeTabPath: null, // V4: restore last active tab on startup
     lastDirectory: null, // V4 persistence fix
     aiConfig: {
         provider: 'ollama',
@@ -106,6 +121,8 @@ function createMainWindow() {
     });
 
     log('Main window created');
+    mainWindow.on('unresponsive', () => crashLog('window-unresponsive'));
+    mainWindow.webContents.on('render-process-gone', (e, d) => crashLog('webContents render-process-gone', d));
 }
 
 // --- Electron Application Menu (V4 Fix) ---
@@ -172,6 +189,8 @@ app.whenReady().then(createMainWindow);
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createMainWindow(); });
+app.on('child-process-gone', (event, details) => crashLog('child-process-gone', details));
+app.on('render-process-gone', (event, wc, details) => crashLog('render-process-gone', details));
 
 
 // --- Safe IPC Wrapper (V4 Audit Fix) ---
@@ -325,14 +344,39 @@ safeHandle('save-file-dialog', async (event, { filePath, content }) => {
     return filePath;
 });
 
+// Keep at most `limit` most-recent ".backup-*" copies of a file; delete older ones.
+function pruneBackups(filePath, limit) {
+    const keep = Number.isInteger(limit) && limit >= 0 ? limit : 3;
+    try {
+        const dir = path.dirname(filePath);
+        const prefix = `${path.basename(filePath)}.backup-`;
+        const backups = fs.readdirSync(dir)
+            .filter(f => f.startsWith(prefix))
+            .map(f => ({ f, t: fs.statSync(path.join(dir, f)).mtimeMs }))
+            .sort((a, b) => b.t - a.t); // newest first
+        for (const old of backups.slice(keep)) {
+            fs.unlinkSync(path.join(dir, old.f));
+        }
+    } catch (e) {
+        log('pruneBackups failed:', e.message);
+    }
+}
+
 safeHandle('save-file-auto', async (event, { filePath, content, makeBackup }) => {
     if (!filePath) return false;
-    if (makeBackup) {
+
+    // Skip entirely if nothing changed — avoids needless writes and backup churn.
+    let existing = null;
+    try { existing = fs.readFileSync(filePath, 'utf-8'); } catch (e) {}
+    if (existing === content) return true;
+
+    if (makeBackup && existing !== null) {
         const date = new Date();
         const pad = n => String(n).padStart(2, '0');
         const timestamp = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}-${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
         const backupPath = `${filePath}.backup-${timestamp}`;
         fs.copyFileSync(filePath, backupPath);
+        pruneBackups(filePath, getConfig().autoSaveBackupLimit);
     }
     fs.writeFileSync(filePath, content, 'utf-8');
     addToRecent(filePath);

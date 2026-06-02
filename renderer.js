@@ -6,6 +6,7 @@ import { EditorService } from './js/editorService.js';
 import { FileTreeService } from './js/fileTreeService.js';
 import { TabService } from './js/tabService.js';
 import { GitService } from './js/gitService.js';
+import { ZoomService } from './js/zoomService.js';
 
 // V4 AI Imports
 import { ModelManager } from './js/ai/modelManager.js';
@@ -48,9 +49,13 @@ const fileTreeService = new FileTreeService(window.api, treeContainer, ctxMenu);
 const gitService = new GitService(window.api, (s) => gitStatus.textContent = s, (show) => {
     document.getElementById('btn-git-diff').style.display = show ? 'block' : 'none';
 });
+const zoomService = new ZoomService(settingsService);
 
 let tabService;
 let scrollSync;
+// True while a tab switch is loading content + restoring its position, so the
+// programmatic scroll/caret changes don't get captured back as user actions.
+let isRestoringTab = false;
 
 // AI V4 Globals
 let modelManager;
@@ -69,6 +74,7 @@ async function init() {
     window.log('Config loaded:', config);
 
     settingsService.applyTheme(config.theme);
+    zoomService.init(config);
     refreshRecentFiles(config.recentFiles);
 
     if (config.zenMode) toggleZenMode(true);
@@ -79,27 +85,49 @@ async function init() {
     // Tab Service Init
     tabService = new TabService(tabsContainer, window.api, (tab) => {
         window.log('Tab selected:', tab.id, tab.title);
+        // Guard: loading content and restoring the position fires programmatic
+        // scroll/caret events. Without this flag their handlers would overwrite
+        // the just-loaded tab's stored position, which made positions look like
+        // they leaked across all open files.
+        isRestoringTab = true;
         editorElem.value = tab.content;
         editorService.updatePreview();
         fileNameDisplay.textContent = tab.title;
 
-        // Restore scroll and cursor if possible
-        if (tab.cursorPos) {
-            editorElem.selectionStart = tab.cursorPos;
-            editorElem.selectionEnd = tab.cursorPos;
-        }
-        if (tab.scrollTop !== undefined) {
-            editorElem.scrollTop = tab.scrollTop;
-            // Trigger sync
-            requestAnimationFrame(() => scrollSync.syncEditorToPreview());
-        }
+        // Restore the reading/editing position for THIS file only.
+        const targetPreview = tab.previewScrollTop || 0;
+        const targetEditorScroll = tab.scrollTop || 0;
+        const targetCaret = Math.min(tab.cursorPos || 0, editorElem.value.length);
 
+        const applyPosition = () => {
+            editorElem.selectionStart = targetCaret;
+            editorElem.selectionEnd = targetCaret;
+            // scrollTop is applied AFTER the caret so "scroll caret into view"
+            // cannot override the saved reading position.
+            editorElem.scrollTop = targetEditorScroll;
+            // Reading position lives in the preview pane (editor may be hidden).
+            previewElem.scrollTop = targetPreview;
+        };
+
+        // Deferred to next frame so scrollHeight is valid after the value change.
         requestAnimationFrame(() => {
-            if (window.mermaidRenderer) window.mermaidRenderer.run({ nodes: previewElem.querySelectorAll('.mermaid') });
+            applyPosition();
+            // Mermaid/images/code-highlight can grow layout height after first
+            // paint, which would clamp/shift the restore. Re-apply afterwards.
+            const p = (window.mermaidRenderer)
+                ? window.mermaidRenderer.run({ nodes: previewElem.querySelectorAll('.mermaid') }).catch(() => {})
+                : Promise.resolve();
+            Promise.resolve(p).then(() => {
+                requestAnimationFrame(() => {
+                    applyPosition();
+                    // Release the guard once the programmatic events have flushed.
+                    requestAnimationFrame(() => { isRestoringTab = false; });
+                });
+            });
         });
 
         fileService.currentFilePath = tab.path;
-        settingsService.update({ openedTabs: tabService.getSavableState() });
+        persistSession();
     });
 
     await tabService.init(config);
@@ -126,13 +154,38 @@ async function init() {
         fileService.scheduleAutoSave(editorElem.value, settingsService.config);
     });
 
-    // Save scroll pos on change
+    // Save scroll pos on change (and persist for next session)
     editorElem.addEventListener('scroll', () => {
+        if (isRestoringTab) return; // ignore programmatic scroll during tab restore
         const active = tabService.getActiveTab();
         if (active) {
             active.scrollTop = editorElem.scrollTop;
+            persistSession();
         }
     });
+
+    // The editor panel is often hidden (read-only preview mode), so the real
+    // reading position lives in the preview pane. Persist it per file too.
+    previewElem.addEventListener('scroll', () => {
+        if (isRestoringTab) return; // ignore programmatic scroll during tab restore
+        const active = tabService.getActiveTab();
+        if (active) {
+            active.previewScrollTop = previewElem.scrollTop;
+            persistSession();
+        }
+    });
+
+    // Track cursor (caret) position so we can restore the last editing spot
+    const captureCursor = () => {
+        if (isRestoringTab) return; // ignore programmatic caret moves during restore
+        const active = tabService.getActiveTab();
+        if (active) {
+            active.cursorPos = editorElem.selectionStart;
+            persistSession();
+        }
+    };
+    editorElem.addEventListener('keyup', captureCursor);
+    editorElem.addEventListener('click', captureCursor);
 
     // V4 AI Setup
     await initAI(config);
@@ -143,6 +196,21 @@ async function init() {
         await fileTreeService.openFolder(config.lastDirectory);
         await gitService.init(config.lastDirectory, config);
     }
+
+    // Capture the final cursor/scroll position before the window closes
+    window.addEventListener('beforeunload', () => {
+        const active = tabService.getActiveTab();
+        if (active) {
+            active.cursorPos = editorElem.selectionStart;
+            active.scrollTop = editorElem.scrollTop;
+            active.previewScrollTop = previewElem.scrollTop;
+        }
+        clearTimeout(sessionPersistTimer);
+        settingsService.update({
+            openedTabs: tabService.getSavableState(),
+            activeTabPath: tabService.getActiveTabPath()
+        });
+    });
 
     // --- Menu Actions Integration (V4 Fix) ---
     window.api.onMenuTrigger((action) => {
@@ -274,6 +342,19 @@ async function initAI(config) {
     elModal.addEventListener('click', (e) => {
         if (e.target === elModal) closeAiSettings();
     });
+}
+
+// V4: debounced persistence of the open tabs + their cursor/scroll positions
+let sessionPersistTimer;
+function persistSession() {
+    clearTimeout(sessionPersistTimer);
+    sessionPersistTimer = setTimeout(() => {
+        if (!tabService) return;
+        settingsService.update({
+            openedTabs: tabService.getSavableState(),
+            activeTabPath: tabService.getActiveTabPath()
+        });
+    }, 600);
 }
 
 function refreshRecentFiles(files) {
@@ -434,6 +515,19 @@ searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && search
 
 document.getElementById('btn-git-diff').addEventListener('click', () => gitService.viewDiff());
 
+// --- Font Zoom (V4) ---
+document.getElementById('btn-zoom-in').addEventListener('click', () => zoomService.change(1));
+document.getElementById('btn-zoom-out').addEventListener('click', () => zoomService.change(-1));
+document.getElementById('btn-zoom-reset').addEventListener('click', () => zoomService.reset());
+
+// Ctrl + mouse wheel zooms the editor/preview text instead of zooming the whole page
+document.getElementById('editor-container').addEventListener('wheel', (e) => {
+    if (e.ctrlKey) {
+        e.preventDefault();
+        zoomService.change(e.deltaY < 0 ? 1 : -1);
+    }
+}, { passive: false });
+
 document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.key === 's') { e.preventDefault(); document.getElementById('btn-save').click(); }
     if (e.ctrlKey && e.key === 'o') { e.preventDefault(); document.getElementById('btn-open').click(); }
@@ -444,6 +538,9 @@ document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.key === 'e') { e.preventDefault(); toggleEditor(); }
     if (e.ctrlKey && e.shiftKey && e.key === 'B') { e.preventDefault(); toggleSidebar(); }
     if (e.ctrlKey && e.shiftKey && e.key === 'P') { e.preventDefault(); togglePreview(); }
+    if (e.ctrlKey && (e.key === '=' || e.key === '+')) { e.preventDefault(); zoomService.change(1); }
+    if (e.ctrlKey && e.key === '-') { e.preventDefault(); zoomService.change(-1); }
+    if (e.ctrlKey && e.key === '0') { e.preventDefault(); zoomService.reset(); }
 
     // V4 UX Fix: Close modals on Escape
     if (e.key === 'Escape') {
